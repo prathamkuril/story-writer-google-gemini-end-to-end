@@ -1,251 +1,297 @@
 import os
+import logging
 import google.generativeai as genai
 import streamlit as st
 from dotenv import load_dotenv
 from google.api_core import retry
+from typing import Any
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # Load environment variables
 load_dotenv()
 
-# Fetch Gemini API key from environment variables
-GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
+# Initialize Google Gemini model variable
+model: Any = None
 
-# Configure the Gemini API
-genai.configure(api_key=GOOGLE_API_KEY)
+def configure_page() -> None:
+    """Configures the Streamlit page layout and sets custom styles."""
+    st.set_page_config(page_title="Story Generator", layout="centered")
 
-# Load the Gemini model
-model = genai.GenerativeModel("gemini-1.5-flash")
+    # Set background gradient and custom styles
+    st.markdown(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700&display=swap');
 
-# Function to retry the story generation
-def generate_with_retry(model, prompt):
-    return model.generate_content(prompt, request_options={"retry": retry.Retry()})
+        .main {
+            background: linear-gradient(135deg, #1a1a1a 0%, #333333 100%);
+            color: white;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            text-align: center;
+        }
+        h1, h2, h3 {
+            color: #f0f0f0;
+            font-weight: 700;
+            text-align: center;
+        }
+        h1.sub-title {
+            font-size: 0.8rem;
+            color: #dcdcdc;
+            margin-top: -10px;
+        }
+        .stButton button {
+            background-color: #4CAF50;
+            border-radius: 12px;
+            color: white;
+            padding: 10px 20px;
+            font-size: 1.1em;
+            box-shadow: 0 4px 12px rgba(0, 255, 0, 0.2);
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            display: block;
+            margin: 0 auto; /* Center all buttons */
+        }
+        .stButtonSmall button {
+            background-color: #FF8C00;
+            border-radius: 8px;
+            color: white;
+            padding: 4px 10px;
+            font-size: 0.7em;
+            display: block;
+            margin: 0 auto; /* Center small buttons */
+        }
+        .step-description {
+            font-size: 1.2em;
+            color: #dcdcdc;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .generated-text {
+            text-align: justify;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .contact-card {
+            background-color: #293241;
+            padding: 15px;
+            border-radius: 12px;
+            color: white;
+            margin-top: 30px;
+            text-align: center;
+        }
+        .contact-card a {
+            color: #4CAF50;
+            text-decoration: none;
+            margin-right: 10px;
+        }
+        .copyright {
+            margin-top: 30px;
+            font-size: 0.9em;
+            color: #dcdcdc;
+            text-align: center;
+        }
+        .button-row {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+        </style>
+        """, unsafe_allow_html=True
+    )
+    logging.info("Page configured with custom styles.")
 
-# Define the persona early on before referencing it
-persona = '''\
-You are an award-winning science fiction author with a penchant for expansive,
-intricately woven stories. Your ultimate goal is to write the next award-winning
-sci-fi novel.'''
-
-# Streamlit front-end
-st.set_page_config(page_title="Story Generator", layout="centered")
-
-# Set background gradient and custom styles
-st.markdown(
+def select_llm() -> Any:
     """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700&display=swap');
-
-    .main {
-        background: linear-gradient(135deg, #1a1a1a 0%, #333333 100%);
-        color: white;
-        font-family: 'Plus Jakarta Sans', sans-serif;
-        text-align: center;
-    }
-    h1, h2, h3 {
-        color: #f0f0f0;
-        font-weight: 700;
-        text-align: center;
-    }
-    .stButton button {
-        background-color: #4CAF50; /* Softer green color */
-        border-radius: 12px;
-        color: white;
-        padding: 10px 20px;
-        font-size: 1.1em;
-        box-shadow: 0 4px 12px rgba(0, 255, 0, 0.2);
-        transition: background-color 0.3s ease, transform 0.2s ease;
-    }
-    .stButton button:hover {
-        background-color: #388E3C;
-        transform: translateY(-3px);
-    }
-    .stButtonSmall button {
-        background-color: #4CAF50;
-        border-radius: 8px;
-        color: white;
-        padding: 8px 16px;
-        font-size: 0.9em;
-        transition: background-color 0.3s ease;
-    }
-    .step-description {
-        font-size: 1.2em;
-        color: #dcdcdc;
-        margin-bottom: 20px;
-        text-align: center;
-    }
-    .generated-text {
-        text-align: justify;
-        max-width: 600px;
-        margin: 0 auto;
-    }
-    .contact-card {
-        background-color: #293241;
-        padding: 15px;
-        border-radius: 12px;
-        color: white;
-        margin-top: 30px;
-        text-align: center;
-    }
-    .contact-card a {
-        color: #4CAF50;
-        text-decoration: none;
-        margin-right: 10px;
-    }
-    .copyright {
-        margin-top: 30px;
-        font-size: 0.9em;
-        color: #dcdcdc;
-        text-align: center;
-    }
-    </style>
-    """, unsafe_allow_html=True
-)
-
-# Landing Area with Title and Introduction
-st.title("🌟 Gemini Story Generator")
-st.markdown("""
-Welcome to the **Gemini Story Generator**! This tool allows you to create unique, AI-powered stories. Here's what you can do at each step:
-1. **Generate a Premise**: Choose between Sci-Fi, Horror, or Funny genres to start.
-2. **Build an Outline**: Develop an outline based on your premise.
-3. **Customize Your Story**: Set the tone and complexity.
-4. **Continue Writing**: Add your inputs to guide the AI's narrative.
-5. **Save/Load**: Save your progress and come back later to finish your story.
-
-Let's get started! 🚀
-""")
-st.markdown("---")
-
-# Progress bar to track writing steps
-progress = st.progress(0)
-
-# Initialize session state for premise, outline, and story
-if 'premise' not in st.session_state:
-    st.session_state['premise'] = ''
-if 'outline' not in st.session_state:
-    st.session_state['outline'] = ''
-if 'story' not in st.session_state:
-    st.session_state['story'] = ''
-
-# Step 1: Generate Premise with Genre Options
-st.subheader("🎬 Step 1: Craft Your Premise")
-st.markdown('<p class="step-description">Select a genre and generate a unique story premise.</p>', unsafe_allow_html=True)
-
-col1, col2, col3 = st.columns([1, 1, 1])
-
-with col1:
-    if st.button("🛸 Generate Sci-Fi Premise"):
-        premise_prompt = f"{persona}\nWrite a single sentence premise for a sci-fi story featuring cats."
-        st.session_state['premise'] = generate_with_retry(model, premise_prompt).text
-        st.success("Sci-Fi Premise Generated!")
-        st.markdown(f'<p class="generated-text">{st.session_state["premise"]}</p>', unsafe_allow_html=True)
-        progress.progress(25)
-
-with col2:
-    if st.button("👻 Generate Horror Premise"):
-        premise_prompt = '''You are an acclaimed horror writer with a talent for chilling stories. Write a premise for a horror story involving an abandoned house.'''
-        st.session_state['premise'] = generate_with_retry(model, premise_prompt).text
-        st.success("Horror Premise Generated!")
-        st.markdown(f'<p class="generated-text">{st.session_state["premise"]}</p>', unsafe_allow_html=True)
-        progress.progress(25)
-
-with col3:
-    if st.button("😂 Generate Funny Premise"):
-        premise_prompt = '''You are a humorist known for hilarious and light-hearted tales. Write a premise for a funny story about a talking dog.'''
-        st.session_state['premise'] = generate_with_retry(model, premise_prompt).text
-        st.success("Funny Premise Generated!")
-        st.markdown(f'<p class="generated-text">{st.session_state["premise"]}</p>', unsafe_allow_html=True)
-        progress.progress(25)
-
-# Step 2: Generate Outline
-if st.session_state['premise']:
-    st.subheader("📜 Step 2: Build Your Outline")
-    st.markdown('<p class="step-description">Generate a structured outline for your story based on the premise.</p>', unsafe_allow_html=True)
-    if st.button("📝 Generate Outline"):
-        outline_prompt = f"{persona}\nYou have a gripping premise in mind:\n{st.session_state['premise']}\nWrite an outline for the plot of your story."
-        st.session_state['outline'] = generate_with_retry(model, outline_prompt).text
-        st.success("Outline Generated!")
-        st.markdown(f'<p class="generated-text">{st.session_state["outline"]}</p>', unsafe_allow_html=True)
-        progress.progress(50)
-
-# Step 3: Customize Story
-if st.session_state['outline']:
-    st.subheader("🎨 Step 3: Customize Your Story")
-    st.markdown('<p class="step-description">Set the tone and complexity of your story before starting the first draft.</p>', unsafe_allow_html=True)
+    Allows user to select between Gemini 1.5 Flash and Gemini 1.5 Pro models.
+    Returns:
+        Any: The selected GenerativeModel object.
+    """
+    llm_choice = st.selectbox("Choose the Gemini LLM:", ["Gemini 1.5 Flash", "Gemini 1.5 Pro"])
+    if llm_choice == "Gemini 1.5 Flash":
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        logging.info("Gemini 1.5 Flash model selected.")
+    else:
+        model = genai.GenerativeModel("gemini-1.5-pro")
+        logging.info("Gemini 1.5 Pro model selected.")
     
-    tone = st.selectbox("🔮 Choose the tone of the story", ['Serious', 'Humorous', 'Dark', 'Inspirational'])
-    complexity = st.slider("🧠 Plot Complexity", 1, 10)
+    return model
 
-    persona_custom = f"{persona}\nYou prefer to write in a {tone.lower()} tone with a plot complexity level of {complexity}."
+def generate_with_retry(model: Any, prompt: str) -> Any:
+    """
+    Generates content using the specified model with retry logic.
+    
+    Args:
+        model (Any): The GenerativeModel instance being used.
+        prompt (str): The text prompt to pass to the model.
+    
+    Returns:
+        Any: The generated content from the model.
+    """
+    try:
+        response = model.generate_content(prompt, request_options={"retry": retry.Retry()})
+        logging.info(f"Content generated for prompt: {prompt[:30]}...")
+        return response
+    except Exception as e:
+        logging.error(f"Error generating content: {str(e)}")
+        return None
 
-    if st.button("💡 Generate First Draft"):
-        starting_prompt = f"{persona_custom}\nYou have a gripping premise:\n{st.session_state['premise']}\nYour rich outline is:\n{st.session_state['outline']}\nBegin the story."
-        st.session_state['story'] = generate_with_retry(model, starting_prompt).text
-        st.success("Story Draft Generated!")
-        st.markdown(f'<p class="generated-text">{st.session_state["story"]}</p>', unsafe_allow_html=True)
-        progress.progress(75)
+def display_header() -> None:
+    """Displays the header and introductory text."""
+    st.title("🌟 Story Generator")
+    st.markdown('<h1 class="sub-title">Powered by Google Gemini LLMs</h1>', unsafe_allow_html=True)
+    st.markdown("""
+    Welcome to the **Story Generator**! This app uses the latest **Google Gemini LLMs** to help you craft unique, AI-powered stories. Here's how it works:
+    1. **Choose Your LLM**: Select between **Gemini 1.5 Flash** for faster responses, or **Gemini 1.5 Pro** for more advanced outputs.
+    2. **Generate a Premise**: Pick a genre and let the AI create an exciting premise for your story.
+    3. **Build an Outline**: Structure your story with a detailed outline generated by the AI.
+    4. **Customize the Story**: Set the tone and complexity level to match your preferences.
+    5. **Continue Writing**: Guide the AI with inputs to flesh out the story step by step.
+    6. **Save/Load**: Save your progress and return later to continue writing.
+    """)
+    logging.info("Displayed header and introductory text.")
 
-# Step 4: Continue Writing with Input
-if st.session_state['story']:
-    st.subheader("📖 Step 4: Continue Writing Your Story")
-    st.markdown('<p class="step-description">Add suggestions or inputs to guide the next part of your story.</p>', unsafe_allow_html=True)
+def initialize_session_state() -> None:
+    """Initializes the session state for premise, outline, and story."""
+    if 'premise' not in st.session_state:
+        st.session_state['premise'] = ''
+    if 'outline' not in st.session_state:
+        st.session_state['outline'] = ''
+    if 'story' not in st.session_state:
+        st.session_state['story'] = ''
+    logging.info("Session state initialized for premise, outline, and story.")
 
-    user_input = st.text_input("💬 Add a suggestion or input (optional)")
-    if st.button("🔄 Continue Writing"):
-        continuation_prompt = f"{persona_custom}\nPremise: {st.session_state['premise']}\nOutline: {st.session_state['outline']}\nWhat you've written so far:\n{st.session_state['story']}\n\nUser Input: {user_input}\nContinue writing."
-        st.session_state['story'] += generate_with_retry(model, continuation_prompt).text
-        st.success("Story Continued!")
-        st.markdown(f'<p class="generated-text">{st.session_state["story"]}</p>', unsafe_allow_html=True)
-        progress.progress(100)
+def generate_premise(model: Any) -> None:
+    """Handles the premise generation functionality."""
+    st.subheader("🎬 Step 1: Craft Your Premise")
+    st.markdown('<p class="step-description">Select a genre and generate a unique story premise.</p>', unsafe_allow_html=True)
 
-# Fun Feature: Subplot Generator
-if st.session_state['story']:
-    st.subheader("🎭 Add a Twist! (Optional)")
-    st.markdown('<p class="step-description">Add an exciting subplot to your story.</p>', unsafe_allow_html=True)
-    if st.button("🎬 Generate Subplot"):
-        subplot_prompt = f"{persona_custom}\nAdd an exciting subplot to this story."
-        subplot = generate_with_retry(model, subplot_prompt).text
-        st.session_state['story'] += f"\n\n**Subplot**: {subplot}"
-        st.success("Subplot Added!")
-        st.markdown(f'<p class="generated-text">{st.session_state["story"]}</p>', unsafe_allow_html=True)
+    col1, col2, col3 = st.columns(3)
 
-# Save and Load Functionality - Adjusted Button Placement
-st.subheader("💾 Save/Load Your Progress")
+    with col1:
+        if st.button("🛸 Generate Sci-Fi Premise"):
+            prompt = "You are an award-winning sci-fi author...\nWrite a single sentence premise for a sci-fi story featuring cats."
+            st.session_state['premise'] = generate_with_retry(model, prompt).text
+            st.success("Sci-Fi Premise Generated!")
+            st.markdown(f'<p class="generated-text">{st.session_state["premise"]}</p>', unsafe_allow_html=True)
 
-col1, col2 = st.columns(2)
-with col1:
-    st.markdown('<div class="stButtonSmall">', unsafe_allow_html=True)
+    with col2:
+        if st.button("👻 Generate Horror Premise"):
+            prompt = "You are an acclaimed horror writer...\nWrite a single sentence premise for a horror story."
+            st.session_state['premise'] = generate_with_retry(model, prompt).text
+            st.success("Horror Premise Generated!")
+            st.markdown(f'<p class="generated-text">{st.session_state["premise"]}</p>', unsafe_allow_html=True)
+
+    with col3:
+        if st.button("😂 Generate Funny Premise"):
+            prompt = "You are a humorist...\nWrite a single sentence premise for a funny story."
+            st.session_state['premise'] = generate_with_retry(model, prompt).text
+            st.success("Funny Premise Generated!")
+            st.markdown(f'<p class="generated-text">{st.session_state["premise"]}</p>', unsafe_allow_html=True)
+
+def generate_outline(model: Any) -> None:
+    """Generates the outline based on the selected premise."""
+    if st.session_state['premise']:
+        st.subheader("📜 Step 2: Build Your Outline")
+        st.markdown('<p class="step-description">Generate a structured outline for your story based on the premise.</p>', unsafe_allow_html=True)
+        if st.button("📝 Generate Outline"):
+            outline_prompt = f"You have a gripping premise:\n{st.session_state['premise']}\nWrite an outline for your story."
+            st.session_state['outline'] = generate_with_retry(model, outline_prompt).text
+            st.success("Outline Generated!")
+            st.markdown(f'<p class="generated-text">{st.session_state["outline"]}</p>', unsafe_allow_html=True)
+
+def customize_story(model: Any) -> None:
+    """Allows the user to set the tone and complexity, and generates the first draft."""
+    if st.session_state['outline']:
+        st.subheader("🎨 Step 3: Customize Your Story")
+        st.markdown('<p class="step-description">Set the tone and complexity of your story before starting the first        draft.</p>', unsafe_allow_html=True)
+
+        # Tone and complexity selection
+        tone = st.selectbox("🔮 Choose the tone of the story", ['Serious', 'Humorous', 'Dark', 'Inspirational'])
+        complexity = st.slider("🧠 Plot Complexity", 1, 10)
+
+        # Persona customization based on user input
+        persona_custom = f"You prefer to write in a {tone.lower()} tone with a plot complexity level of {complexity}."
+
+        if st.button("💡 Generate First Draft"):
+            prompt = f"You have a gripping premise:\n{st.session_state['premise']}\nYour outline:\n{st.session_state['outline']}\n{persona_custom}\nBegin the story."
+            st.session_state['story'] = generate_with_retry(model, prompt).text
+            st.success("Story Draft Generated!")
+            st.markdown(f'<p class="generated-text">{st.session_state["story"]}</p>', unsafe_allow_html=True)
+
+def continue_story_with_input(model: Any) -> None:
+    """Allows the user to add their input to guide the next part of the story."""
+    if st.session_state['story']:
+        st.subheader("📖 Step 4: Continue Writing Your Story")
+        st.markdown('<p class="step-description">Add your input to guide the next part of the story (optional).</p>', unsafe_allow_html=True)
+
+        user_input = st.text_input("💬 Add your input (optional)")
+        if st.button("🔄 Continue Writing"):
+            continuation_prompt = f"Premise: {st.session_state['premise']}\nOutline: {st.session_state['outline']}\nWhat you've written so far:\n{st.session_state['story']}\nUser input: {user_input}\nContinue writing."
+            st.session_state['story'] += generate_with_retry(model, continuation_prompt).text
+            st.success("Story Continued!")
+            st.markdown(f'<p class="generated-text">{st.session_state["story"]}</p>', unsafe_allow_html=True)
+
+def save_and_load_story() -> None:
+    """Provides functionality for saving and loading the story."""
+    st.subheader("💾 Save/Load Your Progress")
+    st.markdown('<div class="button-row">', unsafe_allow_html=True)
+
+    # Save button
     if st.button("💾 Save Story"):
-        with open('saved_story.txt', 'w') as f:
-            f.write(st.session_state['story'])
-        st.success("Story Saved!")
-    st.markdown('</div>', unsafe_allow_html=True)
+        try:
+            with open('saved_story.txt', 'w') as f:
+                f.write(st.session_state['story'])
+            st.success("Story Saved!")
+            logging.info("Story saved successfully.")
+        except Exception as e:
+            logging.error(f"Error saving story: {str(e)}")
 
-with col2:
-    st.markdown('<div class="stButtonSmall">', unsafe_allow_html=True)
+    # Load button
     if st.button("📂 Load Story"):
         try:
             with open('saved_story.txt', 'r') as f:
                 st.session_state['story'] = f.read()
             st.success("Story Loaded!")
             st.markdown(f'<p class="generated-text">{st.session_state["story"]}</p>', unsafe_allow_html=True)
+            logging.info("Story loaded successfully.")
         except FileNotFoundError:
             st.error("No saved story found!")
+            logging.error("No saved story found.")
+        except Exception as e:
+            logging.error(f"Error loading story: {str(e)}")
+
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Final Story Display
-st.subheader("📜 Your Final Story")
-st.markdown(f'<p class="generated-text">{st.session_state["story"]}</p>', unsafe_allow_html=True)
-
-# Footer Section with Contact Info and Copyright
-st.markdown("---")
-st.markdown(
-    """
+def display_footer() -> None:
+    """Displays the footer with contact and copyright information."""
+    st.markdown("---")
+    st.markdown("""
     <div class="contact-card">
         <h3>Contact</h3>
         <p>👨‍💻 Created by Pratham Kuril</p>
         <p><a href="https://github.com/prathamkuril" target="_blank">GitHub</a> | <a href="https://www.linkedin.com/in/prathamkuril" target="_blank">LinkedIn</a></p>
     </div>
     <p class="copyright">© 2024 Pratham Kuril. All rights reserved.</p>
-    """, unsafe_allow_html=True
-)
+    """, unsafe_allow_html=True)
+    logging.info("Footer displayed.")
+
+# Main application logic
+def main() -> None:
+    """Main function to run the Streamlit app."""
+    configure_page()
+    display_header()
+    initialize_session_state()
+    
+    model = select_llm()
+    
+    generate_premise(model)
+    generate_outline(model)
+    customize_story(model)
+    continue_story_with_input(model)  # Include the user input prompt for continuation
+    save_and_load_story()
+    display_footer()
+
+if __name__ == "__main__":
+    main()
 
