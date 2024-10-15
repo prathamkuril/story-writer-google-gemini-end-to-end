@@ -1,4 +1,4 @@
-# Story Generator using 'gemini-1.5-pro' and 'gemini-1.5-flash's
+# Story Generator using 'gemini-1.5-pro' and 'gemini-1.5-flash'
 
 The **Story Generator** is a web application that allows users to create unique, AI-generated stories using Google's **Gemini LLMs**. It helps users craft, customize, and continue writing stories by selecting specific genres, tones, and complexities. The app provides an interactive and fun way to guide an AI through the creative writing process, allowing users to input prompts and generate various story elements step-by-step.
 
