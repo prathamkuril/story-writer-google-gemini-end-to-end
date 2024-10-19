@@ -70,7 +70,7 @@ The **Story Generator** is a web application that allows users to create unique,
 6. **Run the App**:
 
    ```bash
-   streamlit run app.py
+   streamlit run StoryGenerator.py
    ```
 
 7. **Access the App**:
